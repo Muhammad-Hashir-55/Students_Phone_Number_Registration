@@ -4,8 +4,10 @@ import re
 import time
 import pandas as pd
 import os
+
 # Fix for inotify watch limit
 os.environ['STREAMLIT_SERVER_FILE_WATCHER_TYPE'] = 'none'
+
 # Page configuration
 st.set_page_config(
     page_title="Student Phone Number Registration",
@@ -14,8 +16,11 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Initialize database
-database.create_table()
+# Initialize database with error handling
+try:
+    database.create_table()
+except Exception as e:
+    st.error(f"Database initialization error: {e}")
 
 # Custom CSS with enhanced color scheme
 st.markdown("""
@@ -296,9 +301,6 @@ with col1:
                 else:
                     student = database.get_student_by_reg(reg_number.strip())
                     if student:
-                        # Logic: We allow overwrite now. We check if it was already there just to change the message slightly if we wanted, 
-                        # but "Saved/Updated" covers both cases.
-                        
                         success = database.update_phone_number(reg_number.strip(), phone_number.strip())
                         
                         if success:
@@ -451,7 +453,7 @@ for idx, student in enumerate(filtered_students):
         </div>
         """, unsafe_allow_html=True)
 
-# Footer
+# Footer (Updated for SQLite)
 st.markdown("---")
 st.markdown("""
 <div class="footer">
@@ -466,7 +468,7 @@ st.markdown("""
         </div>
     </div>
     <p style="margin-top: 1rem; font-size: 0.8rem; color: #adb5bd;">
-        Last updated: • Auto-saves to PostgreSQL database
+        Data stored securely in SQLite database
     </p>
 </div>
 """, unsafe_allow_html=True)

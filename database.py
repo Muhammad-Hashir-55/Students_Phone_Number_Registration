@@ -1,18 +1,18 @@
 import sqlite3
-import os
 from datetime import datetime
 
 def get_connection():
     """Create connection to SQLite database"""
-    # Use a local SQLite database file
-    return sqlite3.connect('students.db', check_same_thread=False)
+    conn = sqlite3.connect('students.db', check_same_thread=False)
+    conn.row_factory = sqlite3.Row  # Return rows as dictionaries
+    return conn
 
 def create_table():
     """Create students table if it doesn't exist"""
     conn = get_connection()
     cur = conn.cursor()
     
-    # Create table with SQLite syntax
+    # Create table
     cur.execute("""
         CREATE TABLE IF NOT EXISTS students (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -23,9 +23,11 @@ def create_table():
         )
     """)
     
-    # Insert initial student data if table is empty
+    # Check if table is empty
     cur.execute("SELECT COUNT(*) FROM students")
-    if cur.fetchone()[0] == 0:
+    count = cur.fetchone()[0]
+    
+    if count == 0:
         students = [
             ("Arsalan Khalil", "2023130"),
             ("Hamza Mukhtar", "2023682"),
@@ -52,10 +54,13 @@ def create_table():
         ]
         
         for name, reg in students:
-            cur.execute(
-                "INSERT OR IGNORE INTO students (name, reg_number) VALUES (?, ?)",
-                (name, reg)
-            )
+            try:
+                cur.execute(
+                    "INSERT OR IGNORE INTO students (name, reg_number) VALUES (?, ?)",
+                    (name, reg)
+                )
+            except:
+                pass
     
     conn.commit()
     cur.close()
@@ -69,15 +74,20 @@ def get_student_by_reg(reg_number):
     student = cur.fetchone()
     cur.close()
     conn.close()
-    return student
+    
+    if student:
+        # Convert to tuple for compatibility
+        return tuple(student)
+    return None
 
 def update_phone_number(reg_number, phone_number):
     """Update phone number for a student"""
     conn = get_connection()
     cur = conn.cursor()
     
-    # Update with current timestamp
+    # Get current timestamp
     current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    
     cur.execute(
         "UPDATE students SET phone_number = ?, updated_at = ? WHERE reg_number = ?",
         (phone_number, current_time, reg_number)
@@ -94,29 +104,26 @@ def get_all_students():
     conn = get_connection()
     cur = conn.cursor()
     
-    # SQLite doesn't support CASE in the same way, so we'll process it in Python
     cur.execute("""
-        SELECT name, reg_number, phone_number, updated_at
+        SELECT name, reg_number, phone_number 
         FROM students 
         ORDER BY name
     """)
     
     students_raw = cur.fetchall()
-    
-    # Process the results to add status
     students = []
-    for name, reg, phone, updated_at in students_raw:
-        if phone:
-            status = '✅ Submitted'
-        else:
-            status = '❌ Pending'
+    
+    for row in students_raw:
+        name = row[0]
+        reg = row[1]
+        phone = row[2]
+        status = '✅ Submitted' if phone else '❌ Pending'
         students.append((name, reg, phone, status))
     
     cur.close()
     conn.close()
     return students
 
-# Optional: Function to get database statistics
 def get_stats():
     """Get database statistics"""
     conn = get_connection()
@@ -143,45 +150,3 @@ def get_stats():
         'pending': pending,
         'last_update': last_update
     }
-
-# Optional: Function to reset a student's phone number (for admin use)
-def reset_phone_number(reg_number):
-    """Reset phone number for a student"""
-    conn = get_connection()
-    cur = conn.cursor()
-    
-    cur.execute(
-        "UPDATE students SET phone_number = NULL, updated_at = CURRENT_TIMESTAMP WHERE reg_number = ?",
-        (reg_number,)
-    )
-    
-    conn.commit()
-    rows_affected = cur.rowcount
-    cur.close()
-    conn.close()
-    return rows_affected > 0
-
-# Optional: Function to export data to CSV
-def export_to_csv():
-    """Export all student data to CSV format"""
-    conn = get_connection()
-    cur = conn.cursor()
-    
-    cur.execute("""
-        SELECT name, reg_number, phone_number, updated_at
-        FROM students 
-        ORDER BY name
-    """)
-    
-    students = cur.fetchall()
-    cur.close()
-    conn.close()
-    
-    # Create CSV content
-    csv_content = "Name,Registration Number,Phone Number,Last Updated\n"
-    for name, reg, phone, updated_at in students:
-        phone_display = phone if phone else "Not submitted"
-        updated_display = updated_at if updated_at else "Never"
-        csv_content += f'"{name}","{reg}","{phone_display}","{updated_display}"\n'
-    
-    return csv_content
