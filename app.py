@@ -3,7 +3,9 @@ import database
 import re
 import time
 import pandas as pd
-
+import os
+# Fix for inotify watch limit
+os.environ['STREAMLIT_SERVER_FILE_WATCHER_TYPE'] = 'none'
 # Page configuration
 st.set_page_config(
     page_title="Student Phone Number Registration",
