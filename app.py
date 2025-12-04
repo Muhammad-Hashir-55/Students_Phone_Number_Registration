@@ -299,24 +299,36 @@ with col1:
                 elif not re.match(r'^03\d{9}$', phone_number.strip()):
                     st.error("❌ Invalid phone number. Must be in format 03XXXXXXXXX (11 digits)")
                 else:
-                    student = database.get_student_by_reg(reg_number.strip())
-                    if student:
-                        success = database.update_phone_number(reg_number.strip(), phone_number.strip())
-                        
-                        if success:
-                            action_text = "Updated" if student[3] else "Submitted"
-                            st.markdown(f"""
-                            <div class="success-box">
-                                <h4>🎉 Successfully {action_text}!</h4>
-                                <p><strong>👤 Name:</strong> {student[1]}</p>
-                                <p><strong>🎯 Registration No:</strong> {student[2]}</p>
-                                <p><strong>📱 Phone Number:</strong> <span style="color: #28a745; font-weight: bold;">{phone_number.strip()}</span></p>
-                                <p><em>Your record has been saved.</em></p>
-                            </div>
-                            """, unsafe_allow_html=True)
-                            st.balloons()
+                    
+                    # Check if phone number is already used by someone else
+                    existing_owner = database.check_phone_exists(phone_number.strip())
+                    
+                    # Get the current student trying to register
+                    current_student = database.get_student_by_reg(reg_number.strip())
+                    
+                    if current_student:
+                        # ALLOW update if:
+                        # 1. Number is not used by anyone OR
+                        # 2. Number is used, but it belongs to the SAME student (updating their own record)
+                        if existing_owner and existing_owner != current_student[1]:
+                            st.error(f"❌ This phone number is already registered by {existing_owner}.")
                         else:
-                            st.error("❌ Failed to update phone number. Please try again.")
+                            success = database.update_phone_number(reg_number.strip(), phone_number.strip())
+                            
+                            if success:
+                                # ... (Keep your existing success code here)
+                                action_text = "Updated" if current_student[3] else "Submitted"
+                                st.markdown(f"""
+                                <div class="success-box">
+                                    <h4>🎉 Successfully {action_text}!</h4>
+                                    <p><strong>👤 Name:</strong> {current_student[1]}</p>
+                                    <p><strong>🎯 Registration No:</strong> {current_student[2]}</p>
+                                    <p><strong>📱 Phone Number:</strong> <span style="color: #28a745; font-weight: bold;">{phone_number.strip()}</span></p>
+                                </div>
+                                """, unsafe_allow_html=True)
+                                st.balloons()
+                            else:
+                                st.error("❌ Failed to update phone number. Please try again.")
                     else:
                         st.error("🚫 Registration number not found in our records")
 

@@ -150,3 +150,14 @@ def get_stats():
         'pending': pending,
         'last_update': last_update
     }
+
+
+def check_phone_exists(phone_number):
+    """Check if phone number already exists for ANY student"""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT name FROM students WHERE phone_number = ?", (phone_number,))
+    result = cur.fetchone()
+    cur.close()
+    conn.close()
+    return result[0] if result else None
