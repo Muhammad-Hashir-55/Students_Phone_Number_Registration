@@ -2,7 +2,7 @@ import streamlit as st
 import database
 import re
 import time
-import pandas as pd  # Added for CSV download
+import pandas as pd
 
 # Page configuration
 st.set_page_config(
@@ -254,7 +254,7 @@ with st.sidebar:
                     <p><strong>📱 Phone:</strong> <span style="color: #28a745; font-weight: bold;">{student[3]}</span></p>
                     </div>
                     """, unsafe_allow_html=True)
-                    st.success("✅ Phone number already submitted")
+                    st.success("✅ Phone number submitted")
                 else:
                     st.markdown("""
                     <p><strong>📱 Phone:</strong> <span style="color: #dc3545; font-weight: bold;">Not submitted</span></p>
@@ -268,7 +268,7 @@ with st.sidebar:
 col1, col2 = st.columns([1, 1])
 
 with col1:
-    st.markdown('<h3 class="section-header">📝 Submit Your Phone Number</h3>', unsafe_allow_html=True)
+    st.markdown('<h3 class="section-header">📝 Submit / Update Phone Number</h3>', unsafe_allow_html=True)
     
     with st.form("phone_form", clear_on_submit=True):
         reg_number = st.text_input("**Registration Number***", 
@@ -279,7 +279,7 @@ with col1:
                                    placeholder="03XXXXXXXXX",
                                    help="Format: 03XXXXXXXXX (11 digits total)")
         
-        submitted = st.form_submit_button("📤 Submit Phone Number", use_container_width=True)
+        submitted = st.form_submit_button("📤 Submit / Update", use_container_width=True)
         
         if submitted:
             if not reg_number or not phone_number:
@@ -294,31 +294,25 @@ with col1:
                 else:
                     student = database.get_student_by_reg(reg_number.strip())
                     if student:
-                        if student[3]:  # If phone already exists
+                        # Logic: We allow overwrite now. We check if it was already there just to change the message slightly if we wanted, 
+                        # but "Saved/Updated" covers both cases.
+                        
+                        success = database.update_phone_number(reg_number.strip(), phone_number.strip())
+                        
+                        if success:
+                            action_text = "Updated" if student[3] else "Submitted"
                             st.markdown(f"""
-                            <div class="warning-box">
-                                <h4>⚠️ Already Submitted</h4>
-                                <p><strong>Name:</strong> {student[1]}</p>
-                                <p><strong>Registration No:</strong> {student[2]}</p>
-                                <p><strong>Existing Phone:</strong> <span style="color: #28a745;">{student[3]}</span></p>
-                                <p><em>Each student can only submit once.</em></p>
+                            <div class="success-box">
+                                <h4>🎉 Successfully {action_text}!</h4>
+                                <p><strong>👤 Name:</strong> {student[1]}</p>
+                                <p><strong>🎯 Registration No:</strong> {student[2]}</p>
+                                <p><strong>📱 Phone Number:</strong> <span style="color: #28a745; font-weight: bold;">{phone_number.strip()}</span></p>
+                                <p><em>Your record has been saved.</em></p>
                             </div>
                             """, unsafe_allow_html=True)
+                            st.balloons()
                         else:
-                            success = database.update_phone_number(reg_number.strip(), phone_number.strip())
-                            if success:
-                                st.markdown(f"""
-                                <div class="success-box">
-                                    <h4>🎉 Successfully Submitted!</h4>
-                                    <p><strong>👤 Name:</strong> {student[1]}</p>
-                                    <p><strong>🎯 Registration No:</strong> {student[2]}</p>
-                                    <p><strong>📱 Phone Number:</strong> <span style="color: #28a745; font-weight: bold;">{phone_number.strip()}</span></p>
-                                    <p><em>Thank you for submitting your information.</em></p>
-                                </div>
-                                """, unsafe_allow_html=True)
-                                st.balloons()
-                            else:
-                                st.error("❌ Failed to update phone number. Please try again.")
+                            st.error("❌ Failed to update phone number. Please try again.")
                     else:
                         st.error("🚫 Registration number not found in our records")
 
@@ -331,9 +325,8 @@ with col2:
         <ol style="color: #495057;">
             <li><strong>Enter your 7-digit registration number</strong> (e.g., 2023130)</li>
             <li><strong>Enter your phone number</strong> in format 03XXXXXXXXX (11 digits total)</li>
-            <li><strong>Click "Submit Phone Number"</strong> button</li>
-            <li><strong>One submission per student</strong> - no modifications allowed</li>
-            <li>Make sure your information is correct before submitting</li>
+            <li><strong>Click "Submit / Update"</strong> button</li>
+            <li><strong>Modifications:</strong> You can update your number by submitting the form again.</li>
         </ol>
         <div style="background: #f8f9fa; padding: 0.8rem; border-radius: 6px; margin-top: 1rem;">
             <p style="margin: 0; color: #6c757d;"><strong>Note:</strong> Total students fixed at 22</p>
@@ -395,17 +388,14 @@ with filter_col:
     filter_status = st.selectbox("Filter by status:", ["All", "Submitted", "Pending"])
 
 with refresh_col:
-    st.markdown("<br>", unsafe_allow_html=True) # Spacer for alignment
+    st.markdown("<br>", unsafe_allow_html=True) # Spacer
     if st.button("🔄 Refresh", use_container_width=True):
         st.rerun()
 
 with download_col:
-    st.markdown("<br>", unsafe_allow_html=True) # Spacer for alignment
+    st.markdown("<br>", unsafe_allow_html=True) # Spacer
     
-    # Generate CSV if students exist
     if students:
-        # Create DataFrame - Adjust columns if your DB order differs
-        # Assuming DB returns: Name, RegNo, Phone, Status (or similar 4 fields)
         df = pd.DataFrame(students, columns=['Name', 'Registration No', 'Phone Number', 'Status'])
         csv = df.to_csv(index=False).encode('utf-8')
         
