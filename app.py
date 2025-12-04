@@ -1,134 +1,168 @@
-import sqlite3
-from datetime import datetime
+import streamlit as st
+import database
+import re
+import time
+import pandas as pd
+import os
 
-def get_connection():
-    """Create connection to SQLite database"""
-    conn = sqlite3.connect('students.db', check_same_thread=False)
-    conn.row_factory = sqlite3.Row  # Return rows as dictionaries
-    return conn
+# 1. PAGE CONFIG
+st.set_page_config(
+    page_title="Student Phone Number Registration",
+    page_icon="📱",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-def create_table():
-    """Create students table if it doesn't exist"""
-    conn = get_connection()
-    cur = conn.cursor()
+# 2. FILE WATCHER FIX
+os.environ['STREAMLIT_SERVER_FILE_WATCHER_TYPE'] = 'none'
+
+# 3. DATABASE INITIALIZATION & SELF-HEALING
+# This part fixes the error you were seeing
+success, error_msg = database.create_table()
+
+if not success:
+    # If loading fails, it means the file is corrupted. We delete it and try again.
+    warning_placeholder = st.empty()
+    warning_placeholder.warning(f"⚠️ Database Error: {error_msg}. Attempting Auto-Fix...")
     
-    # Create table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS students (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            reg_number TEXT UNIQUE NOT NULL,
-            phone_number TEXT,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    
-    # Check if table is empty
-    cur.execute("SELECT COUNT(*) FROM students")
-    count = cur.fetchone()[0]
-    
-    if count == 0:
-        students = [
-            ("Arsalan Khalil", "2023130"),
-            ("Hamza Mukhtar", "2023682"),
-            ("Abdul Raffay bin Ilyas", "2023021"),
-            ("Muhammad", "2023339"),
-            ("Muhammad Usman Nazir", "2023546"),
-            ("Muhammad Hamza khan", "2023425"),
-            ("Abdul Ahad Ali Khan", "2023004"),
-            ("Muhammad Umer Farooq", "2023540"),
-            ("Riyan khan Durrani", "2023611"),
-            ("Hamza Saeed", "2023903"),
-            ("Muhammad Umar", "2023535"),
-            ("Zain", "2023773"),
-            ("Hashir", "2023429"),
-            ("Bushrah Zulfiqar", "2023165"),
-            ("Syeda Masooma Shah", "2023705"),
-            ("Warisha Arshad", "2023757"),
-            ("Rameen Zia", "2023594"),
-            ("Shumaz saeed", "2023662"),
-            ("Nishat Ahmed", "2023574"),
-            ("Muhammad Rohaan Mirza", "2023495"),
-            ("Ahmad Saeed Zaidi", "2023073"),
-            ("Saad Khurshid", "2023622")
-        ]
+    if os.path.exists('students.db'):
+        try:
+            os.remove('students.db')
+            time.sleep(1)
+            # Try creating again
+            retry_success, retry_msg = database.create_table()
+            if retry_success:
+                warning_placeholder.success("✅ Database repaired! Please refresh page.")
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.error(f"❌ Critical Error: Could not repair database. {retry_msg}")
+                st.stop()
+        except Exception as e:
+            st.error(f"❌ Permission Error: Could not delete corrupted file. {e}")
+            st.stop()
+
+# 4. CSS STYLES
+st.markdown("""
+<style>
+    .main-header {
+        text-align: center; color: white; padding: 1.5rem;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 10px; margin-bottom: 2rem;
+    }
+    .success-box {
+        background: #d4edda; padding: 1.5rem; border-radius: 10px; 
+        border-left: 6px solid #28a745; margin: 1rem 0;
+    }
+    .student-card {
+        background: white; padding: 1rem; border-radius: 10px;
+        border: 1px solid #ddd; margin-bottom: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .submitted { border-left: 5px solid #28a745; }
+    .pending { border-left: 5px solid #dc3545; }
+    .stButton>button { width: 100%; border-radius: 8px; font-weight: bold;}
+</style>
+""", unsafe_allow_html=True)
+
+# 5. HEADER
+st.markdown("""
+<div class="main-header">
+    <h1>📱 Student Phone Registration</h1>
+    <p>Department of Electrical Engineering</p>
+</div>
+""", unsafe_allow_html=True)
+
+# 6. SIDEBAR
+with st.sidebar:
+    st.header("🔍 Find Student")
+    reg_input = st.text_input("Enter Reg Number:", placeholder="2023130")
+    if reg_input:
+        student = database.get_student_by_reg(reg_input.strip())
+        if student:
+            st.success("Student Found!") if student[3] else st.warning("Student Found (No Phone)")
+            st.write(f"**Name:** {student[1]}")
+            st.write(f"**Phone:** {student[3] if student[3] else 'Not Submitted'}")
+        else:
+            st.error("Not found.")
+
+# 7. MAIN FORM
+col1, col2 = st.columns([1, 1])
+
+with col1:
+    st.subheader("📝 Submit Number")
+    with st.form("entry"):
+        reg_num = st.text_input("Registration Number", placeholder="2023XXX", max_chars=7)
+        phone_num = st.text_input("Phone Number", placeholder="03XXXXXXXXX", max_chars=11)
+        submitted = st.form_submit_button("Submit / Update")
         
-        for name, reg in students:
-            try:
-                cur.execute(
-                    "INSERT OR IGNORE INTO students (name, reg_number) VALUES (?, ?)",
-                    (name, reg)
-                )
-            except:
-                pass
-    
-    conn.commit()
-    cur.close()
-    conn.close()
+        if submitted:
+            if not reg_num or not phone_num:
+                st.error("Please fill all fields")
+            elif not re.match(r'^\d{7}$', reg_num):
+                st.error("Invalid Reg Number (Must be 7 digits)")
+            elif not re.match(r'^03\d{9}$', phone_num):
+                st.error("Invalid Phone (Format: 03XXXXXXXXX)")
+            else:
+                # DUPLICATE CHECK
+                reg_clean = reg_num.strip()
+                phone_clean = phone_num.strip()
+                
+                owner = database.check_phone_exists(phone_clean)
+                student = database.get_student_by_reg(reg_clean)
+                
+                if not student:
+                    st.error("Student not found in class list")
+                elif owner and owner[1] != reg_clean:
+                    st.error(f"❌ This number is already used by {owner[0]}!")
+                else:
+                    if database.update_phone_number(reg_clean, phone_clean):
+                        st.balloons()
+                        st.markdown(f"""
+                        <div class="success-box">
+                            <h4>✅ Success!</h4>
+                            <p>Saved for: <strong>{student[1]}</strong></p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.error("Database error")
 
-def get_student_by_reg(reg_number):
-    """Get student by registration number"""
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM students WHERE reg_number = ?", (reg_number,))
-    student = cur.fetchone()
-    cur.close()
-    conn.close()
+with col2:
+    st.subheader("📊 Progress")
+    students = database.get_all_students()
+    total = 22
+    done = sum(1 for s in students if s[2])
     
-    if student:
-        return tuple(student)
-    return None
+    st.metric("Submitted", f"{done} / {total}")
+    st.progress(done/total)
+    st.info("Note: You cannot use a phone number already registered to another student.")
 
-def check_phone_exists(phone_number):
-    """Check if phone number already exists and return the owner's details"""
-    conn = get_connection()
-    cur = conn.cursor()
-    # Returns (name, reg_number)
-    cur.execute("SELECT name, reg_number FROM students WHERE phone_number = ?", (phone_number,))
-    result = cur.fetchone()
-    cur.close()
-    conn.close()
-    return result if result else None
+# 8. DIRECTORY
+st.markdown("---")
+st.subheader("👥 Directory")
 
-def update_phone_number(reg_number, phone_number):
-    """Update phone number for a student"""
-    conn = get_connection()
-    cur = conn.cursor()
-    
-    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    
-    cur.execute(
-        "UPDATE students SET phone_number = ?, updated_at = ? WHERE reg_number = ?",
-        (phone_number, current_time, reg_number)
-    )
-    
-    conn.commit()
-    rows_affected = cur.rowcount
-    cur.close()
-    conn.close()
-    return rows_affected > 0
+search = st.text_input("Filter:", placeholder="Search name...")
+cols = st.columns(3)
 
-def get_all_students():
-    """Get all students with their phone numbers"""
-    conn = get_connection()
-    cur = conn.cursor()
-    
-    cur.execute("""
-        SELECT name, reg_number, phone_number 
-        FROM students 
-        ORDER BY name
-    """)
-    
-    students_raw = cur.fetchall()
-    students = []
-    
-    for row in students_raw:
-        name = row[0]
-        reg = row[1]
-        phone = row[2]
-        status = '✅ Submitted' if phone else '❌ Pending'
-        students.append((name, reg, phone, status))
-    
-    cur.close()
-    conn.close()
-    return students
+filtered = [s for s in students if search.lower() in s[0].lower() or search in s[1]]
+
+for i, s in enumerate(filtered):
+    with cols[i%3]:
+        status = "submitted" if s[2] else "pending"
+        icon = "✅" if s[2] else "⏳"
+        st.markdown(f"""
+        <div class="student-card {status}">
+            <b>{icon} {s[0]}</b><br>
+            <span style="color:grey">{s[1]}</span><br>
+            <span style="color:{'green' if s[2] else 'red'}">{s[2] if s[2] else 'Pending'}</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+# 9. MANUAL RESET BUTTON (Backup)
+with st.sidebar:
+    st.markdown("---")
+    if st.checkbox("Admin Tools"):
+        if st.button("🔴 Force Reset Database"):
+            if os.path.exists('students.db'):
+                os.remove('students.db')
+                st.rerun()
