@@ -17,11 +17,9 @@ st.set_page_config(
 os.environ['STREAMLIT_SERVER_FILE_WATCHER_TYPE'] = 'none'
 
 # 3. DATABASE INITIALIZATION & SELF-HEALING
-# This part fixes the error you were seeing
 success, error_msg = database.create_table()
 
 if not success:
-    # If loading fails, it means the file is corrupted. We delete it and try again.
     warning_placeholder = st.empty()
     warning_placeholder.warning(f"⚠️ Database Error: {error_msg}. Attempting Auto-Fix...")
     
@@ -29,7 +27,6 @@ if not success:
         try:
             os.remove('students.db')
             time.sleep(1)
-            # Try creating again
             retry_success, retry_msg = database.create_table()
             if retry_success:
                 warning_placeholder.success("✅ Database repaired! Please refresh page.")
@@ -39,7 +36,7 @@ if not success:
                 st.error(f"❌ Critical Error: Could not repair database. {retry_msg}")
                 st.stop()
         except Exception as e:
-            st.error(f"❌ Permission Error: Could not delete corrupted file. {e}")
+            st.error(f"❌ Permission Error: {e}")
             st.stop()
 
 # 4. CSS STYLES
@@ -137,13 +134,31 @@ with col2:
     st.progress(done/total)
     st.info("Note: You cannot use a phone number already registered to another student.")
 
-# 8. DIRECTORY
+# 8. DIRECTORY & DOWNLOAD
 st.markdown("---")
 st.subheader("👥 Directory")
 
-search = st.text_input("Filter:", placeholder="Search name...")
-cols = st.columns(3)
+# Search and Download Columns
+search_col, download_col = st.columns([3, 1])
 
+with search_col:
+    search = st.text_input("Filter Directory:", placeholder="Search name...")
+
+with download_col:
+    # CSV DOWNLOAD LOGIC
+    if students:
+        df = pd.DataFrame(students, columns=['Name', 'Registration No', 'Phone Number', 'Status'])
+        csv = df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="📥 Download CSV",
+            data=csv,
+            file_name='student_records.csv',
+            mime='text/csv',
+            use_container_width=True
+        )
+
+# Grid Layout
+cols = st.columns(3)
 filtered = [s for s in students if search.lower() in s[0].lower() or search in s[1]]
 
 for i, s in enumerate(filtered):
@@ -158,11 +173,3 @@ for i, s in enumerate(filtered):
         </div>
         """, unsafe_allow_html=True)
 
-# 9. MANUAL RESET BUTTON (Backup)
-with st.sidebar:
-    st.markdown("---")
-    if st.checkbox("Admin Tools"):
-        if st.button("🔴 Force Reset Database"):
-            if os.path.exists('students.db'):
-                os.remove('students.db')
-                st.rerun()
