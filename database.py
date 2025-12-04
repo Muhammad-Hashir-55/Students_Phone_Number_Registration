@@ -76,16 +76,25 @@ def get_student_by_reg(reg_number):
     conn.close()
     
     if student:
-        # Convert to tuple for compatibility
         return tuple(student)
     return None
+
+def check_phone_exists(phone_number):
+    """Check if phone number already exists and return the owner's details"""
+    conn = get_connection()
+    cur = conn.cursor()
+    # Returns (name, reg_number)
+    cur.execute("SELECT name, reg_number FROM students WHERE phone_number = ?", (phone_number,))
+    result = cur.fetchone()
+    cur.close()
+    conn.close()
+    return result if result else None
 
 def update_phone_number(reg_number, phone_number):
     """Update phone number for a student"""
     conn = get_connection()
     cur = conn.cursor()
     
-    # Get current timestamp
     current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
     cur.execute(
@@ -123,41 +132,3 @@ def get_all_students():
     cur.close()
     conn.close()
     return students
-
-def get_stats():
-    """Get database statistics"""
-    conn = get_connection()
-    cur = conn.cursor()
-    
-    cur.execute("SELECT COUNT(*) FROM students")
-    total = cur.fetchone()[0]
-    
-    cur.execute("SELECT COUNT(*) FROM students WHERE phone_number IS NOT NULL")
-    submitted = cur.fetchone()[0]
-    
-    cur.execute("SELECT COUNT(*) FROM students WHERE phone_number IS NULL")
-    pending = cur.fetchone()[0]
-    
-    cur.execute("SELECT MAX(updated_at) FROM students WHERE phone_number IS NOT NULL")
-    last_update = cur.fetchone()[0]
-    
-    cur.close()
-    conn.close()
-    
-    return {
-        'total': total,
-        'submitted': submitted,
-        'pending': pending,
-        'last_update': last_update
-    }
-
-
-def check_phone_exists(phone_number):
-    """Check if phone number already exists for ANY student"""
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT name FROM students WHERE phone_number = ?", (phone_number,))
-    result = cur.fetchone()
-    cur.close()
-    conn.close()
-    return result[0] if result else None
